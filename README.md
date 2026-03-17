@@ -165,4 +165,4 @@ pyre_review/
 
 ## License
 
-TBD
+Apache License 2.0. See [LICENSE](LICENSE).
