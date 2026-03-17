@@ -1,2 +1,0 @@
-[console_scripts]
-pyre-review = pyre_review.cli:main
