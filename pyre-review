@@ -1,0 +1,12 @@
+#!/usr/bin/env python3
+"""pyre-review: lightweight local code review tool for topic branches."""
+
+import sys
+import os
+
+# Allow running from the script's directory without installing
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from pyre_review.cli import main
+
+main()

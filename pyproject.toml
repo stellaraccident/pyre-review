@@ -1,0 +1,9 @@
+[project]
+name = "pyre-review"
+version = "0.1.0"
+description = "Lightweight local code review tool for topic branches"
+requires-python = ">=3.10"
+dependencies = ["pygments"]
+
+[project.scripts]
+pyre-review = "pyre_review.cli:main"
