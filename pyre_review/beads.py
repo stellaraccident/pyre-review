@@ -1,26 +1,23 @@
 """Beads integration for pyre-review.
 
-Creates review-request and review-response beads so agents can participate
-in the code review lifecycle via `br` (beads_rust) or `bd` (beads).
+Single-bead lifecycle for human code review:
 
-Workflow:
-  1. Coder finishes work, requests review:
-       pyre-review request <topic> <base> --bead-tool br --assignee reviewer
+  1. Agent finishes work, requests human review:
+       pyre-review request <topic> <base>
+     Creates a bead assigned to @human-review with the review command
+     in the description.
 
-     Creates a bead: "Review: <topic> → <base>" assigned to reviewer,
-     with the command to run in the description.
+  2. Human runs /human-review to see the queue, picks a review,
+     runs the pyre-review command from the bead description.
 
-  2. Reviewer runs the review command (from bead description):
-       pyre-review <topic> <base> --review-bead <id> --bead-tool br --assignee coder
-
-  3. On verdict, pyre-review creates a response bead blocking the request:
-       - "Code review: approved"
-       - "Code review: changes requested"
-       - "Code review: comments"
-     Assigned to the coder, so `br ready` surfaces it.
+  3. On verdict, pyre-review updates the SAME bead:
+     - Title updated to "Review result: approved (topic/foo)"
+     - Description replaced with full review results
+     - Assignee changed to @coder
+     The coder picks it up via `br ready`, addresses comments,
+     then closes the bead when done.
 """
 
-import json
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -51,7 +48,7 @@ def create_review_request(
     base: str,
     *,
     tool: str = "br",
-    assignee: str = "reviewer",
+    assignee: str = "human-review",
     repo_flag: str = "",
     db: str | None = None,
     priority: int = 1,
@@ -102,39 +99,45 @@ def create_review_request(
     return BeadResult(bead_id=bead_id, title=title, tool=tool)
 
 
-def create_review_response(
+def update_with_verdict(
     review_bead_id: str,
     verdict: str,
     comments: list[dict],
     summary: str = "",
     *,
+    topic: str = "",
+    base: str = "",
     tool: str = "br",
     assignee: str = "coder",
     db: str | None = None,
 ) -> BeadResult:
-    """Create a response bead after a review verdict.
+    """Update the review bead with verdict results and reassign to coder.
 
-    The response bead blocks the review-request bead and is assigned
-    to the coder so it shows up in `br ready`.
+    Updates title, description, and assignee on the existing bead.
+    The coder picks it up via `br ready` and closes it when done.
     """
     if verdict == "approve":
-        title = "Code review: approved"
-        priority = 2
+        verdict_label = "approved"
     elif verdict == "request-changes":
-        title = "Code review: changes requested"
-        priority = 1
+        verdict_label = "changes requested"
     else:
-        title = "Code review: comments"
-        priority = 2
+        verdict_label = "comments"
 
-    # Build description from comments
-    lines = []
+    title = f"Review result: {verdict_label} ({topic})"
+
+    # Build description with full review results
+    lines = [f"**Review: {verdict_label}**\n"]
+    if topic:
+        lines.append(f"Topic: `{topic}`  Base: `{base}`\n")
     if summary:
-        lines.append(summary)
-        lines.append("")
-    unresolved = [c for c in comments if c.get("type") == "comment" and not c.get("resolved")]
+        lines.append(f"## Summary\n{summary}\n")
+
+    unresolved = [
+        c for c in comments
+        if c.get("type") == "comment" and not c.get("resolved")
+    ]
     if unresolved:
-        lines.append(f"**{len(unresolved)} unresolved comment(s):**\n")
+        lines.append(f"## Unresolved comments ({len(unresolved)})\n")
         for c in unresolved:
             file_loc = f"`{c['file']}:{c['line']}`" if c.get("file") else ""
             lines.append(f"- {file_loc} — {c['body']}")
@@ -143,23 +146,17 @@ def create_review_response(
 
     description = "\n".join(lines)
 
-    args = [
-        "create",
-        "--title", title,
-        "--type", "task",
-        "--description", description,
-        "--assignee", assignee,
-        "--parent", review_bead_id,
-        "-p", str(priority),
-        "--silent",
-    ]
-    response_id = _run_bead_cmd(tool, args, db=db)
+    _run_bead_cmd(
+        tool,
+        [
+            "update", review_bead_id,
+            "--title", title,
+            "--description", description,
+            "--assignee", assignee,
+        ],
+        db=db,
+    )
 
-    # The response bead blocks the review-request bead:
-    # review_bead depends-on response (can't close review until response addressed)
-    _run_bead_cmd(tool, ["dep", "add", review_bead_id, response_id], db=db)
-
-    print(f"Review response: {response_id} ({title})")
-    print(f"Assigned to: {assignee}")
-    print(f"Blocks: {review_bead_id}")
-    return BeadResult(bead_id=response_id, title=title, tool=tool)
+    print(f"Review updated: {review_bead_id} → {verdict_label}")
+    print(f"Reassigned to: {assignee}")
+    return BeadResult(bead_id=review_bead_id, title=title, tool=tool)

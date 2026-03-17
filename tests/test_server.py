@@ -22,7 +22,7 @@ def _make_server(tmp_repo):
     stats = git_ops.get_diff_stats(repo, topic, base)
     html = generate_html(files, comments, topic, base, commits, stats)
 
-    handler = partial(ReviewHandler, html=html, repo=repo, topic=topic)
+    handler = partial(ReviewHandler, html=html, repo=repo, topic=topic, base=base)
     server = HTTPServer(("127.0.0.1", 0), handler)
     port = server.server_address[1]
     return server, port

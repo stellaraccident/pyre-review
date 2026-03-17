@@ -60,7 +60,7 @@ def cmd_review(args):
         print(f"Static review written to {out_path}")
     else:
         run_server(
-            html, repo, topic,
+            html, repo, topic, base=base,
             port=args.port,
             bead_config=bead_config,
         )
@@ -183,8 +183,8 @@ def _dispatch_subcommand(argv):
     p_request.add_argument("base", help="Base branch to diff against")
     p_request.add_argument("--bead-tool", default="br", choices=["br", "bd"],
                            help="Bead tool to use (default: br)")
-    p_request.add_argument("--assignee", default="reviewer",
-                           help="Who to assign the review to (default: reviewer)")
+    p_request.add_argument("--assignee", default="human-review",
+                           help="Who to assign the review to (default: human-review)")
     p_request.add_argument("--priority", "-p", type=int, default=1,
                            help="Bead priority 0-4 (default: 1)")
     p_request.add_argument("--bead-db", help="Beads database path")

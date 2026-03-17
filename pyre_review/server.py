@@ -13,11 +13,12 @@ from . import git_ops
 class ReviewHandler(BaseHTTPRequestHandler):
     """Handles GET for the review page and POST for comments/verdicts."""
 
-    def __init__(self, *args, html: str, repo: str, topic: str,
+    def __init__(self, *args, html: str, repo: str, topic: str, base: str = "",
                  bead_config: dict | None = None, **kwargs):
         self.html = html
         self.repo = repo
         self.topic = topic
+        self.base = base
         self.bead_config = bead_config
         super().__init__(*args, **kwargs)
 
@@ -89,13 +90,15 @@ class ReviewHandler(BaseHTTPRequestHandler):
         bead_result = None
         if self.bead_config:
             try:
-                from .beads import create_review_response
+                from .beads import update_with_verdict
                 comments = [n for n in notes if n.get("type") == "comment"]
-                result = create_review_response(
+                result = update_with_verdict(
                     review_bead_id=self.bead_config["review_bead"],
                     verdict=body["verdict"],
                     comments=comments,
                     summary=body.get("body", ""),
+                    topic=self.topic,
+                    base=self.base,
                     tool=self.bead_config.get("bead_tool", "br"),
                     assignee=self.bead_config.get("assignee", "coder"),
                 )
@@ -138,12 +141,14 @@ def run_server(
     html: str,
     repo: str,
     topic: str,
+    base: str = "",
     port: int = 0,
     bead_config: dict | None = None,
 ) -> None:
     """Start server, open browser, block until Ctrl-C."""
     handler = partial(
-        ReviewHandler, html=html, repo=repo, topic=topic, bead_config=bead_config,
+        ReviewHandler, html=html, repo=repo, topic=topic, base=base,
+        bead_config=bead_config,
     )
     server = HTTPServer(("127.0.0.1", port), handler)
     actual_port = server.server_address[1]

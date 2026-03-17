@@ -4,12 +4,11 @@ These tests mock the br/bd commands since we can't assume beads is installed
 in the test environment.
 """
 
-import json
 from unittest.mock import patch, MagicMock
 
 from pyre_review.beads import (
     create_review_request,
-    create_review_response,
+    update_with_verdict,
     _run_bead_cmd,
 )
 
@@ -37,7 +36,7 @@ class TestCreateReviewRequest:
         mock_cmd.return_value = "bead_001"
         result = create_review_request(
             "topic/phase0-kernels", "main",
-            tool="br", assignee="reviewer",
+            tool="br", assignee="human-review",
         )
         assert result.bead_id == "bead_001"
         assert result.title == "Review: topic/phase0-kernels → main"
@@ -51,59 +50,64 @@ class TestCreateReviewRequest:
         assert "create" in create_args
         assert "--assignee" in create_args
         idx = create_args.index("--assignee")
-        assert create_args[idx + 1] == "reviewer"
+        assert create_args[idx + 1] == "human-review"
+
+    @patch("pyre_review.beads._run_bead_cmd")
+    def test_default_assignee_is_human_review(self, mock_cmd):
+        mock_cmd.return_value = "bead_010"
+        create_review_request("topic/test", "main", tool="br")
+        create_args = mock_cmd.call_args_list[0][0][1]
+        idx = create_args.index("--assignee")
+        assert create_args[idx + 1] == "human-review"
 
     @patch("pyre_review.beads._run_bead_cmd")
     def test_includes_review_command_in_description(self, mock_cmd):
         mock_cmd.return_value = "bead_002"
         create_review_request(
             "topic/test", "main",
-            tool="br", assignee="reviewer",
+            tool="br", assignee="human-review",
         )
         # Second call: update description with actual bead ID
         update_call = mock_cmd.call_args_list[1]
         args = update_call[0][1]
         assert "update" in args
         assert "bead_002" in args
-        # Description should contain the review command
         desc_idx = args.index("--description")
         desc = args[desc_idx + 1]
         assert "pyre-review" in desc
         assert "--review-bead bead_002" in desc
 
 
-class TestCreateReviewResponse:
+class TestUpdateWithVerdict:
     @patch("pyre_review.beads._run_bead_cmd")
     def test_approve(self, mock_cmd):
-        mock_cmd.return_value = "resp_001"
-        result = create_review_response(
+        mock_cmd.return_value = ""
+        result = update_with_verdict(
             review_bead_id="bead_001",
             verdict="approve",
             comments=[],
             summary="LGTM",
+            topic="topic/foo",
+            base="main",
             tool="br",
             assignee="coder",
         )
-        assert result.bead_id == "resp_001"
-        assert result.title == "Code review: approved"
+        assert result.bead_id == "bead_001"  # same bead, not a new one
+        assert "approved" in result.title
+        assert "topic/foo" in result.title
 
-        # Should create the bead then add dependency
-        assert mock_cmd.call_count == 2
-        # First call: create
-        create_args = mock_cmd.call_args_list[0][0][1]
-        assert "create" in create_args
-        assert "--parent" in create_args
-        parent_idx = create_args.index("--parent")
-        assert create_args[parent_idx + 1] == "bead_001"
-        # Second call: dep add
-        dep_args = mock_cmd.call_args_list[1][0][1]
-        assert dep_args[:2] == ["dep", "add"]
-        assert "bead_001" in dep_args
-        assert "resp_001" in dep_args
+        # Single update call — no create, no dep add
+        assert mock_cmd.call_count == 1
+        update_args = mock_cmd.call_args_list[0][0][1]
+        assert update_args[0] == "update"
+        assert update_args[1] == "bead_001"
+        assert "--assignee" in update_args
+        idx = update_args.index("--assignee")
+        assert update_args[idx + 1] == "coder"
 
     @patch("pyre_review.beads._run_bead_cmd")
     def test_request_changes_with_comments(self, mock_cmd):
-        mock_cmd.return_value = "resp_002"
+        mock_cmd.return_value = ""
         comments = [
             {"type": "comment", "file": "foo.py", "line": 10,
              "body": "Fix this", "resolved": False},
@@ -112,33 +116,66 @@ class TestCreateReviewResponse:
             {"type": "comment", "file": "baz.py", "line": 5,
              "body": "Already fixed", "resolved": True},
         ]
-        result = create_review_response(
+        result = update_with_verdict(
             review_bead_id="bead_001",
             verdict="request-changes",
             comments=comments,
+            topic="topic/foo",
+            base="main",
             tool="br",
         )
-        assert result.title == "Code review: changes requested"
+        assert "changes requested" in result.title
 
-        # Description should list unresolved comments
-        create_args = mock_cmd.call_args_list[0][0][1]
-        desc_idx = create_args.index("--description")
-        desc = create_args[desc_idx + 1]
-        assert "2 unresolved" in desc
+        update_args = mock_cmd.call_args_list[0][0][1]
+        desc_idx = update_args.index("--description")
+        desc = update_args[desc_idx + 1]
+        assert "2" in desc  # 2 unresolved
         assert "foo.py:10" in desc
         assert "bar.py:20" in desc
         assert "baz.py" not in desc  # resolved, not listed
 
     @patch("pyre_review.beads._run_bead_cmd")
     def test_assignee_passed(self, mock_cmd):
-        mock_cmd.return_value = "resp_003"
-        create_review_response(
+        mock_cmd.return_value = ""
+        update_with_verdict(
             review_bead_id="bead_001",
             verdict="approve",
             comments=[],
             assignee="coder",
             tool="br",
         )
-        create_args = mock_cmd.call_args_list[0][0][1]
-        idx = create_args.index("--assignee")
-        assert create_args[idx + 1] == "coder"
+        update_args = mock_cmd.call_args_list[0][0][1]
+        idx = update_args.index("--assignee")
+        assert update_args[idx + 1] == "coder"
+
+    @patch("pyre_review.beads._run_bead_cmd")
+    def test_no_parent_or_dep(self, mock_cmd):
+        """Verify single-bead pattern: no --parent, no dep add."""
+        mock_cmd.return_value = ""
+        update_with_verdict(
+            review_bead_id="bead_001",
+            verdict="approve",
+            comments=[],
+            tool="br",
+        )
+        assert mock_cmd.call_count == 1
+        args = mock_cmd.call_args_list[0][0][1]
+        assert "--parent" not in args
+        assert "dep" not in args
+
+    @patch("pyre_review.beads._run_bead_cmd")
+    def test_includes_topic_and_base(self, mock_cmd):
+        mock_cmd.return_value = ""
+        update_with_verdict(
+            review_bead_id="bead_001",
+            verdict="approve",
+            comments=[],
+            topic="topic/phase0-kernels",
+            base="main",
+            tool="br",
+        )
+        update_args = mock_cmd.call_args_list[0][0][1]
+        desc_idx = update_args.index("--description")
+        desc = update_args[desc_idx + 1]
+        assert "topic/phase0-kernels" in desc
+        assert "main" in desc
