@@ -1,7 +1,6 @@
 """Tiny HTTP server for pyre-review. Serves the review UI and handles comment/verdict POSTs."""
 
 import json
-import signal
 import sys
 from datetime import datetime, timezone
 from functools import partial
@@ -162,16 +161,9 @@ def run_server(
     import webbrowser
     webbrowser.open(url)
 
-    def _shutdown(sig, frame):
-        print("\nShutting down.")
-        server.shutdown()
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, _shutdown)
-
     try:
-        server.serve_forever()
+        server.serve_forever(poll_interval=0.5)
     except KeyboardInterrupt:
-        pass
+        print("\nShutting down.")
     finally:
         server.server_close()
