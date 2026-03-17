@@ -39,16 +39,31 @@ def cmd_review(args):
     commits = git_ops.get_log(repo, topic, base)
     stats = git_ops.get_diff_stats(repo, topic, base)
 
-    html = generate_html(files, comments, topic, base, commits, stats)
+    # Pass beads config to server so verdict can create response beads
+    bead_config = None
+    if getattr(args, "review_bead", None):
+        bead_config = {
+            "review_bead": args.review_bead,
+            "bead_tool": getattr(args, "bead_tool", "br"),
+            "assignee": getattr(args, "assignee", "coder"),
+        }
+
+    html = generate_html(
+        files, comments, topic, base, commits, stats,
+        bead_config=bead_config,
+    )
 
     if args.static:
-        # Write static HTML file instead of starting server
         out_path = args.static
         with open(out_path, "w") as f:
             f.write(html)
         print(f"Static review written to {out_path}")
     else:
-        run_server(html, repo, topic, port=args.port)
+        run_server(
+            html, repo, topic,
+            port=args.port,
+            bead_config=bead_config,
+        )
 
 
 def cmd_comments(args):
@@ -105,10 +120,23 @@ def cmd_add_comment(args):
     print(json.dumps(comment, indent=2))
 
 
+def cmd_request(args):
+    """Request a review by creating a bead."""
+    from .beads import create_review_request
+    create_review_request(
+        args.topic,
+        args.base,
+        tool=args.bead_tool,
+        assignee=args.assignee,
+        repo_flag=args.repo or "",
+        db=getattr(args, "bead_db", None),
+        priority=args.priority,
+    )
+
+
 def main():
     # Manual dispatch: check if first non-flag arg is a known subcommand
-    subcommands = {"comments", "resolve", "add-comment"}
-    # Find first positional arg (skip --repo/-C and their values)
+    subcommands = {"comments", "resolve", "add-comment", "request"}
     argv = sys.argv[1:]
     first_positional = None
     skip_next = False
@@ -150,6 +178,17 @@ def _dispatch_subcommand(argv):
     p_add.add_argument("--body", required=True)
     p_add.add_argument("--side", default="right", choices=["left", "right"])
 
+    p_request = sub.add_parser("request", help="Request a review (creates a bead)")
+    p_request.add_argument("topic", help="Topic branch to review")
+    p_request.add_argument("base", help="Base branch to diff against")
+    p_request.add_argument("--bead-tool", default="br", choices=["br", "bd"],
+                           help="Bead tool to use (default: br)")
+    p_request.add_argument("--assignee", default="reviewer",
+                           help="Who to assign the review to (default: reviewer)")
+    p_request.add_argument("--priority", "-p", type=int, default=1,
+                           help="Bead priority 0-4 (default: 1)")
+    p_request.add_argument("--bead-db", help="Beads database path")
+
     args = parser.parse_args(argv)
     if args.command == "comments":
         cmd_comments(args)
@@ -157,6 +196,8 @@ def _dispatch_subcommand(argv):
         cmd_resolve(args)
     elif args.command == "add-comment":
         cmd_add_comment(args)
+    elif args.command == "request":
+        cmd_request(args)
 
 
 def _dispatch_review(argv):
@@ -169,6 +210,13 @@ def _dispatch_review(argv):
     parser.add_argument("--repo", "-C", help="Path to git repository")
     parser.add_argument("--static", help="Write static HTML to file instead of server")
     parser.add_argument("--port", type=int, default=0, help="Server port (0=auto)")
+    # Beads integration
+    parser.add_argument("--review-bead", metavar="BEAD_ID",
+                        help="Link this review to a bead (creates response on verdict)")
+    parser.add_argument("--bead-tool", default="br", choices=["br", "bd"],
+                        help="Bead tool to use (default: br)")
+    parser.add_argument("--assignee", default="coder",
+                        help="Who to assign the response bead to (default: coder)")
     args = parser.parse_args(argv)
     cmd_review(args)
 

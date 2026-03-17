@@ -85,6 +85,7 @@ def generate_html(
     base: str,
     commits: list[dict],
     stats: tuple[int, int, int],
+    bead_config: dict | None = None,
 ) -> str:
     """Generate a self-contained HTML review page."""
     verdicts = [c for c in comments if c.get("type") == "verdict"]
@@ -100,6 +101,7 @@ def generate_html(
         "stats": {"files": stats[0], "insertions": stats[1], "deletions": stats[2]},
         "files": file_data,
         "verdicts": verdicts,
+        "bead_config": bead_config,
     }
 
     return _TEMPLATE.replace("/* __PYGMENTS_CSS__ */", pygments_css).replace(
@@ -493,8 +495,11 @@ function init() {
   document.getElementById('review-title').textContent =
     `Review: ${DATA.topic} → ${DATA.base}`;
   const s = DATA.stats;
-  document.getElementById('review-stats').innerHTML =
-    `${s.files} files &nbsp; <span class="add">+${s.insertions}</span> <span class="del">-${s.deletions}</span>`;
+  let statsHtml = `${s.files} files &nbsp; <span class="add">+${s.insertions}</span> <span class="del">-${s.deletions}</span>`;
+  if (DATA.bead_config) {
+    statsHtml += ` &nbsp; <span style="color:var(--accent)">bead:${DATA.bead_config.review_bead}</span>`;
+  }
+  document.getElementById('review-stats').innerHTML = statsHtml;
   buildFileTree();
   if (DATA.files.length > 0) selectFile(0);
   document.addEventListener('keydown', handleKey);
@@ -700,13 +705,22 @@ function hideVerdict() {
 async function submitVerdict() {
   const body = document.getElementById('verdict-body').value.trim();
   try {
-    await fetch('/api/verdict', {
+    const resp = await fetch('/api/verdict', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({verdict: currentVerdictType, body: body}),
     });
+    const result = await resp.json();
     hideVerdict();
-    toast(currentVerdictType === 'approve' ? 'Review approved!' : 'Changes requested.');
+    let msg = currentVerdictType === 'approve' ? 'Review approved!' : 'Changes requested.';
+    if (result.bead) {
+      if (result.bead.error) {
+        msg += ` (bead error: ${result.bead.error})`;
+      } else {
+        msg += ` Bead created: ${result.bead.bead_id}`;
+      }
+    }
+    toast(msg);
   } catch (e) {
     toast('Failed to submit verdict: ' + e.message);
   }

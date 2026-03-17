@@ -5,5 +5,11 @@ description = "Lightweight local code review tool for topic branches"
 requires-python = ">=3.10"
 dependencies = ["pygments"]
 
+[project.optional-dependencies]
+test = ["pytest"]
+
 [project.scripts]
 pyre-review = "pyre_review.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -13,10 +13,12 @@ from . import git_ops
 class ReviewHandler(BaseHTTPRequestHandler):
     """Handles GET for the review page and POST for comments/verdicts."""
 
-    def __init__(self, *args, html: str, repo: str, topic: str, **kwargs):
+    def __init__(self, *args, html: str, repo: str, topic: str,
+                 bead_config: dict | None = None, **kwargs):
         self.html = html
         self.repo = repo
         self.topic = topic
+        self.bead_config = bead_config
         super().__init__(*args, **kwargs)
 
     def do_GET(self):
@@ -71,7 +73,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
     def _handle_verdict(self, body: dict):
         notes = git_ops.read_notes(self.repo, self.topic)
         version = max((n.get("version", 0) for n in notes), default=0) + 1
-        verdict = {
+        verdict_entry = {
             "id": git_ops.generate_comment_id(),
             "version": version,
             "type": "verdict",
@@ -80,9 +82,31 @@ class ReviewHandler(BaseHTTPRequestHandler):
             "body": body.get("body", ""),
             "verdict": body["verdict"],
         }
-        notes.append(verdict)
+        notes.append(verdict_entry)
         git_ops.write_notes(self.repo, self.topic, notes)
-        self._json_response(200, verdict)
+
+        # Create beads response if configured
+        bead_result = None
+        if self.bead_config:
+            try:
+                from .beads import create_review_response
+                comments = [n for n in notes if n.get("type") == "comment"]
+                result = create_review_response(
+                    review_bead_id=self.bead_config["review_bead"],
+                    verdict=body["verdict"],
+                    comments=comments,
+                    summary=body.get("body", ""),
+                    tool=self.bead_config.get("bead_tool", "br"),
+                    assignee=self.bead_config.get("assignee", "coder"),
+                )
+                bead_result = {"bead_id": result.bead_id, "title": result.title}
+            except Exception as e:
+                bead_result = {"error": str(e)}
+
+        response = dict(verdict_entry)
+        if bead_result:
+            response["bead"] = bead_result
+        self._json_response(200, response)
 
     def _handle_resolve(self, body: dict):
         comment_id = body["id"]
@@ -107,25 +131,32 @@ class ReviewHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(data).encode())
 
     def log_message(self, format, *args):
-        # Suppress default logging
         pass
 
 
-def run_server(html: str, repo: str, topic: str, port: int = 0) -> None:
+def run_server(
+    html: str,
+    repo: str,
+    topic: str,
+    port: int = 0,
+    bead_config: dict | None = None,
+) -> None:
     """Start server, open browser, block until Ctrl-C."""
-    handler = partial(ReviewHandler, html=html, repo=repo, topic=topic)
+    handler = partial(
+        ReviewHandler, html=html, repo=repo, topic=topic, bead_config=bead_config,
+    )
     server = HTTPServer(("127.0.0.1", port), handler)
     actual_port = server.server_address[1]
     url = f"http://127.0.0.1:{actual_port}/"
 
     print(f"pyre-review server running at {url}")
+    if bead_config:
+        print(f"Linked to bead: {bead_config['review_bead']} (tool: {bead_config.get('bead_tool', 'br')})")
     print("Press Ctrl-C to stop.")
 
-    # Open browser
     import webbrowser
     webbrowser.open(url)
 
-    # Graceful shutdown on SIGINT
     def _shutdown(sig, frame):
         print("\nShutting down.")
         server.shutdown()
