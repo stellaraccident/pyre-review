@@ -161,8 +161,11 @@ Integrates with beads -- use `--review-bead <id>` to link a review to a bead.
 ```bash
 pyre-review comments <topic>                                     # Dump comments as JSON
 pyre-review resolve <topic> <comment_id>                         # Resolve a comment
-pyre-review add-comment <topic> --file F --line N --body "text"  # Add comment
+pyre-review add-comment <topic> --file F --line N --body "text" [--author <name>]  # Add comment
 ```
+
+When replying to review comments, use `add-comment --author <your-name>` to post
+your response on the same file and line, then `resolve` the comment once addressed.
 ````
 
 ## Testing

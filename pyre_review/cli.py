@@ -105,7 +105,7 @@ def cmd_add_comment(args):
         "id": git_ops.generate_comment_id(),
         "version": version,
         "type": "comment",
-        "author": git_ops.get_author(),
+        "author": args.author or git_ops.get_author(),
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "file": args.file,
         "line": args.line,
@@ -177,6 +177,7 @@ def _dispatch_subcommand(argv):
     p_add.add_argument("--line", type=int, required=True)
     p_add.add_argument("--body", required=True)
     p_add.add_argument("--side", default="right", choices=["left", "right"])
+    p_add.add_argument("--author", help="Comment author (default: git user or BR_ACTOR)")
 
     p_request = sub.add_parser("request", help="Request a review (creates a bead)")
     p_request.add_argument("topic", help="Topic branch to review")
