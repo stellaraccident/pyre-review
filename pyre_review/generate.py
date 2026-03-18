@@ -546,7 +546,7 @@ function selectFile(idx) {
 }
 
 // --- File Rendering ---
-function renderFile(file) {
+function renderFile(file, preserveScroll) {
   const view = document.getElementById('file-view');
   let html = `<div class="file-header">
     <span>${esc(file.path)}</span>
@@ -587,8 +587,10 @@ function renderFile(file) {
   });
 
   html += `</table>`;
+  const prevScroll = view.scrollTop;
   view.innerHTML = html;
-  view.scrollTop = 0;
+  if (!preserveScroll) view.scrollTop = 0;
+  else view.scrollTop = prevScroll;
   openCommentInput = null;
 }
 
@@ -657,7 +659,7 @@ async function submitComment(filePath, lineNum) {
     const file = DATA.files[currentFileIdx];
     if (!file.comments) file.comments = [];
     file.comments.push(comment);
-    renderFile(file);
+    renderFile(file, true);
     buildFileTree(); // refresh markers
     toast('Comment added');
   } catch (e) {
@@ -676,7 +678,7 @@ async function resolveComment(id) {
     const file = DATA.files[currentFileIdx];
     const c = file.comments.find(c => c.id === id);
     if (c) { c.resolved = true; c.resolved_at = new Date().toISOString(); }
-    renderFile(file);
+    renderFile(file, true);
     buildFileTree();
     toast('Comment resolved');
   } catch (e) {
