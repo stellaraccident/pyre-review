@@ -16,7 +16,7 @@ def _find_repo(path: str | None) -> str:
     start = path or os.getcwd()
     d = os.path.abspath(start)
     while d != "/":
-        if os.path.isdir(os.path.join(d, ".git")):
+        if os.path.exists(os.path.join(d, ".git")):
             return d
         d = os.path.dirname(d)
     print("error: not inside a git repository", file=sys.stderr)
