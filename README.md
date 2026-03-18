@@ -140,6 +140,31 @@ pyre-review -C /path/to/repo add-comment topic/foo \
 pyre-review -C /path/to/repo comments topic/foo --unresolved
 ```
 
+## Instructions for agents
+
+Add this to your project's `CLAUDE.md` (or equivalent agent instructions file):
+
+````markdown
+## Code Review with pyre-review
+
+Local browser-based code review tool. Diffs a topic branch against a base,
+generates a syntax-highlighted review UI, and persists comments/verdicts
+in `refs/notes/pyre-review`.
+
+```bash
+# Run from inside any git repo
+pyre-review <topic> <base> --port <port>
+```
+
+Integrates with beads -- use `--review-bead <id>` to link a review to a bead.
+
+```bash
+pyre-review comments <topic>                                     # Dump comments as JSON
+pyre-review resolve <topic> <comment_id>                         # Resolve a comment
+pyre-review add-comment <topic> --file F --line N --body "text"  # Add comment
+```
+````
+
 ## Testing
 
 ```bash
