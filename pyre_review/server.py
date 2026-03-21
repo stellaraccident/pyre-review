@@ -85,14 +85,12 @@ class ReviewHandler(BaseHTTPRequestHandler):
         notes.append(verdict_entry)
         git_ops.write_notes(self.repo, self.topic, notes)
 
-        # Create beads response if configured
+        # Create or update beads if configured
         bead_result = None
         if self.bead_config:
             try:
-                from .beads import update_with_verdict
                 comments = [n for n in notes if n.get("type") == "comment"]
-                result = update_with_verdict(
-                    review_bead_id=self.bead_config["review_bead"],
+                bead_kwargs = dict(
                     verdict=body["verdict"],
                     comments=comments,
                     summary=body.get("body", ""),
@@ -101,6 +99,15 @@ class ReviewHandler(BaseHTTPRequestHandler):
                     tool=self.bead_config.get("bead_tool", "br"),
                     assignee=self.bead_config.get("assignee", "coder"),
                 )
+                if self.bead_config.get("new_review_bead"):
+                    from .beads import create_verdict_bead
+                    result = create_verdict_bead(**bead_kwargs)
+                else:
+                    from .beads import update_with_verdict
+                    result = update_with_verdict(
+                        review_bead_id=self.bead_config["review_bead"],
+                        **bead_kwargs,
+                    )
                 bead_result = {"bead_id": result.bead_id, "title": result.title}
             except Exception as e:
                 bead_result = {"error": str(e)}
@@ -154,7 +161,9 @@ def run_server(
     url = f"http://127.0.0.1:{actual_port}/"
 
     print(f"pyre-review server running at {url}")
-    if bead_config:
+    if bead_config and bead_config.get("new_review_bead"):
+        print(f"Will create bead on verdict (tool: {bead_config.get('bead_tool', 'br')})")
+    elif bead_config:
         print(f"Linked to bead: {bead_config['review_bead']} (tool: {bead_config.get('bead_tool', 'br')})")
     print("Press Ctrl-C to stop.")
 

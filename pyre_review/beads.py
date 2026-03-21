@@ -160,3 +160,66 @@ def update_with_verdict(
     print(f"Review updated: {review_bead_id} → {verdict_label}")
     print(f"Reassigned to: {assignee}")
     return BeadResult(bead_id=review_bead_id, title=title, tool=tool)
+
+
+def create_verdict_bead(
+    verdict: str,
+    comments: list[dict],
+    summary: str = "",
+    *,
+    topic: str = "",
+    base: str = "",
+    tool: str = "br",
+    assignee: str = "coder",
+    db: str | None = None,
+    priority: int = 1,
+) -> BeadResult:
+    """Create a new bead with the review verdict.
+
+    One-shot flow: no pre-existing bead required. Creates a bead on verdict
+    with the results and assigns it to the coder.
+    """
+    if verdict == "approve":
+        verdict_label = "approved"
+    elif verdict == "request-changes":
+        verdict_label = "changes requested"
+    else:
+        verdict_label = "comments"
+
+    title = f"Review result: {verdict_label} ({topic})"
+
+    # Build description with full review results
+    lines = [f"**Review: {verdict_label}**\n"]
+    if topic:
+        lines.append(f"Topic: `{topic}`  Base: `{base}`\n")
+    if summary:
+        lines.append(f"## Summary\n{summary}\n")
+
+    unresolved = [
+        c for c in comments
+        if c.get("type") == "comment" and not c.get("resolved")
+    ]
+    if unresolved:
+        lines.append(f"## Unresolved comments ({len(unresolved)})\n")
+        for c in unresolved:
+            file_loc = f"`{c['file']}:{c['line']}`" if c.get("file") else ""
+            lines.append(f"- {file_loc} — {c['body']}")
+    elif verdict == "approve":
+        lines.append("No outstanding comments. Ready to merge.")
+
+    description = "\n".join(lines)
+
+    args = [
+        "create",
+        "--title", title,
+        "--type", "task",
+        "--description", description,
+        "--assignee", assignee,
+        "-p", str(priority),
+        "--silent",
+    ]
+    bead_id = _run_bead_cmd(tool, args, db=db)
+
+    print(f"Review bead created: {bead_id} → {verdict_label}")
+    print(f"Assigned to: {assignee}")
+    return BeadResult(bead_id=bead_id, title=title, tool=tool)

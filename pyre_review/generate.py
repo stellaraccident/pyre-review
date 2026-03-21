@@ -496,8 +496,10 @@ function init() {
     `Review: ${DATA.topic} → ${DATA.base}`;
   const s = DATA.stats;
   let statsHtml = `${s.files} files &nbsp; <span class="add">+${s.insertions}</span> <span class="del">-${s.deletions}</span>`;
-  if (DATA.bead_config) {
+  if (DATA.bead_config && DATA.bead_config.review_bead) {
     statsHtml += ` &nbsp; <span style="color:var(--accent)">bead:${DATA.bead_config.review_bead}</span>`;
+  } else if (DATA.bead_config && DATA.bead_config.new_review_bead) {
+    statsHtml += ` &nbsp; <span style="color:var(--accent)">bead on verdict</span>`;
   }
   document.getElementById('review-stats').innerHTML = statsHtml;
   buildFileTree();

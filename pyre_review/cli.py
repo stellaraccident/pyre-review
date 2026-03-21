@@ -39,11 +39,17 @@ def cmd_review(args):
     commits = git_ops.get_log(repo, topic, base)
     stats = git_ops.get_diff_stats(repo, topic, base)
 
-    # Pass beads config to server so verdict can create response beads
+    # Pass beads config to server so verdict can create/update beads
     bead_config = None
     if getattr(args, "review_bead", None):
         bead_config = {
             "review_bead": args.review_bead,
+            "bead_tool": getattr(args, "bead_tool", "br"),
+            "assignee": getattr(args, "assignee", "coder"),
+        }
+    elif getattr(args, "new_review_bead", False):
+        bead_config = {
+            "new_review_bead": True,
             "bead_tool": getattr(args, "bead_tool", "br"),
             "assignee": getattr(args, "assignee", "coder"),
         }
@@ -212,11 +218,13 @@ def _dispatch_review(argv):
     parser.add_argument("--port", type=int, default=0, help="Server port (0=auto)")
     # Beads integration
     parser.add_argument("--review-bead", metavar="BEAD_ID",
-                        help="Link this review to a bead (creates response on verdict)")
+                        help="Link this review to an existing bead (updates on verdict)")
+    parser.add_argument("--new-review-bead", action="store_true",
+                        help="Create a new bead on verdict (one-shot review)")
     parser.add_argument("--bead-tool", default="br", choices=["br", "bd"],
                         help="Bead tool to use (default: br)")
     parser.add_argument("--assignee", default="coder",
-                        help="Who to assign the response bead to (default: coder)")
+                        help="Who to assign the bead to on verdict (default: coder)")
     args = parser.parse_args(argv)
     cmd_review(args)
 

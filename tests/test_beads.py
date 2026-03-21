@@ -8,6 +8,7 @@ from unittest.mock import patch, MagicMock
 
 from pyre_review.beads import (
     create_review_request,
+    create_verdict_bead,
     update_with_verdict,
     _run_bead_cmd,
 )
@@ -179,3 +180,67 @@ class TestUpdateWithVerdict:
         desc = update_args[desc_idx + 1]
         assert "topic/phase0-kernels" in desc
         assert "main" in desc
+
+
+class TestCreateVerdictBead:
+    @patch("pyre_review.beads._run_bead_cmd")
+    def test_approve_creates_bead(self, mock_cmd):
+        mock_cmd.return_value = "bead_new_001"
+        result = create_verdict_bead(
+            verdict="approve",
+            comments=[],
+            summary="LGTM",
+            topic="topic/foo",
+            base="main",
+            tool="br",
+            assignee="coder",
+        )
+        assert result.bead_id == "bead_new_001"
+        assert "approved" in result.title
+        assert "topic/foo" in result.title
+
+        # Single create call
+        assert mock_cmd.call_count == 1
+        create_args = mock_cmd.call_args_list[0][0][1]
+        assert "create" in create_args
+        idx = create_args.index("--assignee")
+        assert create_args[idx + 1] == "coder"
+
+    @patch("pyre_review.beads._run_bead_cmd")
+    def test_request_changes_with_comments(self, mock_cmd):
+        mock_cmd.return_value = "bead_new_002"
+        comments = [
+            {"type": "comment", "file": "foo.py", "line": 10,
+             "body": "Fix this", "resolved": False},
+            {"type": "comment", "file": "bar.py", "line": 20,
+             "body": "Already fixed", "resolved": True},
+        ]
+        result = create_verdict_bead(
+            verdict="request-changes",
+            comments=comments,
+            topic="topic/bar",
+            base="main",
+            tool="br",
+        )
+        assert "changes requested" in result.title
+
+        create_args = mock_cmd.call_args_list[0][0][1]
+        desc_idx = create_args.index("--description")
+        desc = create_args[desc_idx + 1]
+        assert "foo.py:10" in desc
+        assert "bar.py" not in desc  # resolved, not listed
+
+    @patch("pyre_review.beads._run_bead_cmd")
+    def test_priority_passed(self, mock_cmd):
+        mock_cmd.return_value = "bead_new_003"
+        create_verdict_bead(
+            verdict="approve",
+            comments=[],
+            topic="topic/baz",
+            base="main",
+            tool="br",
+            priority=2,
+        )
+        create_args = mock_cmd.call_args_list[0][0][1]
+        idx = create_args.index("-p")
+        assert create_args[idx + 1] == "2"
